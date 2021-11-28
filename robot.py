@@ -17,7 +17,9 @@ from mesa.space import MultiGrid
 from mesa.visualization.UserParam import UserSettableParameter
 from mesa.datacollection import DataCollector
 from mesa.visualization.modules import ChartModule
-
+from pathfinding.finder.a_star import AStarFinder
+from pathfinding.core.grid import Grid as PathGrid
+from pathfinding.core.diagonal_movement import DiagonalMovement
 
 #Agente robot
 class Robot(Agent):
@@ -30,25 +32,53 @@ class Robot(Agent):
     self.movements = 0
     #numero de casillas limpiadas por el robot
     self.limpiadas = 0
+    self.cargando = 0
+    self.index = 0
+    self.matrix = self.model.matrix
+    grid = PathGrid(matrix = self.matrix)
+    self.grid = grid
 
   def step(self):
     #se elige al azar una posicion para que el robot avance
-    next_moves = self.model.grid.get_neighborhood(self.pos, moore=True)
+    next_moves = self.model.grid.get_neighborhood(self.pos, moore=False)
     next_move = self.random.choice(next_moves)
     #el robot revisa si el bloque en el que esta se encuentra limpio
-    clean = self.checkIfClean()
-    #si el robot todavia puede hacer movimientos y la casilla esta limpia significa que puede moverse
+    box = self.checkIfClean()
+    #si el robot todavia puede hacer movimientos y la casilla no tiene cajas significa que puede moverse
     if self.movements >= self.model.time:
       print("Se ha acabado el tiempo de ejecucion , teniendo un total de",  self.movements * self.model.robots,"movimientos")
-    if(self.movements < self.model.time and clean):
+    #si el robot todavia puede hacer movimientos y el robot aun no lleva una caja significa que puede moverse
+    if(self.movements < self.model.time and self.cargando != 1):
       self.movements += 1
       self.model.grid.move_agent(self, next_move)
+    #si el robot ya lleva una caja significa que tiene que moverse y llevarla al stand
+    #inicializadores del AStar
+    elif (self.movements < self.model.time and self.cargando == 1):
+      self.grid.cleanup()
+      path = self.getPath()
+      print("PATH DENTRO", path)
   
+  def getPath(self):
+    standList = self.model.stands
+    print(standList)
+
+    self.grid.cleanup()
+    grid = PathGrid(matrix= self.matrix)
+    self.grid = grid
+    start = self.grid.node(self.pos[0], self.pos[1])
+    # print("START X: ", self.pos[0])
+    # print("START Y: ", self.pos[1])
+    finder = AStarFinder(diagonal_movement = DiagonalMovement.never)
+    end = self.grid.node(((standList[0])[0]), ((standList[0])[0]))
+    path, runs = finder.find_path(start, end, self.grid)
+    return path
+
   #funcion auxiliar que revisa si la casilla donde se encuentra el robot esta limpia
   def checkIfClean(self):
     cellmates = self.model.grid.get_cell_list_contents([self.pos])
     for block in cellmates:
       if(block.type == "DirtyBlock"):
+        self.cargando += 1
         block.limpio = False
         block.changeColor()
         self.limpiadas += 1
@@ -58,7 +88,6 @@ class Robot(Agent):
         return False
       elif(block.type == "CleanBlock"):
         return True
-      
 
 #Agente casilla Sucia
 class DirtyBlock(Agent):
@@ -90,7 +119,7 @@ class CleanBlock(Agent):
 
 class Maze(Model):
   #se asignan las variables modificables por el usuario siendo filas, columnas, robots, tiempo de ejecucion y el numero de cajas por acomodar
-  def __init__(self, rows = 15, columns = 15, robots = 5, time = 100, dirtyBlocks = 25):
+  def __init__(self, rows = 15, columns = 15, robots = 1, time = 100, dirtyBlocks = 6):
     super().__init__()
     self.schedule = RandomActivation(self)
     self.rows = rows
@@ -99,7 +128,25 @@ class Maze(Model):
     self.time = time
     self.dirtyBlocks = dirtyBlocks
     self.grid = MultiGrid(self.columns, self.rows, torus=False)
-    self.matrix = []
+    self.matrix = [
+      # [1,1,1,1,0,0,0,0,0,0,0,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+      # [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+      # [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+      # [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+      # [1,1,1,0,0,0,0,0,0,0,0,0,1,1,1]
+
+    ]
+    self.stands = []
     #se crea una matriz de ceros para identificar las casillas sucias y limpias
     self.createCeroMatrix()
     #se crean los robots y bloques tanto limpios como sucios para colocarse en el tablero
@@ -118,12 +165,11 @@ class Maze(Model):
   #se define la cantidad de stands por crear con base a la cantidad de cajas que se encuentran en el almacen
   def placeStands(self):
     standNum = self.dirtyBlocks
+    #Se crea la cantidad necesaria de stands para la cantidad de cajas a ordenar
     if standNum % 5 == 0:
       standNum = int(standNum / 5)
-      # print(": Stands mod",standNum)
     else:
       standNum = int(standNum / 5) + 1
-      # print(": Stands not mod",standNum)
     while standNum > 0:
       for i in range (0,self.rows):
         if standNum > 0:
@@ -132,11 +178,13 @@ class Maze(Model):
               block = Stand(self, (i,j))
               self.grid.place_agent(block, block.pos)
               standNum -= 1
+              self.stands.append((i,j))
               # print(": Stands",standNum)
             else:
               break
         else:
           break
+      # print(self.stands)
 
     # else:
     #   for i in range (0,standNum):
@@ -152,18 +200,18 @@ class Maze(Model):
     while blocks > 0:
       randomX = self.random.randint(0, self.rows-1)
       randomY = self.random.randint(0, self.columns-1)
-      while self.matrix[randomX][randomY] == 1:
+      while self.matrix[randomX][randomY] == 0:
         randomX = self.random.randint(0, self.rows-1)
         randomY = self.random.randint(0, self.columns-1)
       block = DirtyBlock(self,(randomY,randomX))
       self.grid.place_agent(block, block.pos)
-      self.matrix[randomX][randomY] = 1
+      self.matrix[randomX][randomY] = 0
       blocks -= 1
 
   #se crean los bloques limpios
   def placeCleanBlocks(self):
      for _,x,y in self.grid.coord_iter():
-      if self.matrix[y][x] == 0:
+      if self.matrix[y][x] == 1: #cambio 0x1
         block = CleanBlock(self,(x,y))
         self.grid.place_agent(block, block.pos)
 
@@ -172,8 +220,8 @@ class Maze(Model):
     for i in range(0,self.rows):
       zeros = []
       for j in range(0,self.columns):
-        zeros.append(0)
-      self.matrix.append(zeros)
+        zeros.append(1) #cambio 0x1
+      self.matrix.append(zeros) 
   
   #se colocan los robots
   def placeRobots(self):
@@ -187,10 +235,12 @@ def agent_portrayal(agent):
   if(agent.type == "robot"):
     return {"Shape": "robot.png", "Layer": 1}
   elif(agent.type == "DirtyBlock"):
-    return {"Shape": "rect", "w": 1, "h": 1, "Filled": "true", "Color": "#495057", "Layer": 1}
+    return {"Shape": "rect", "w": 1, "h": 1, "Filled": "true", "Color": "gold", "Layer": 1}
   elif(agent.type == "CleanBlock"):
     return {"Shape": "rect", "w": 1, "h": 1, "Filled": "true", "Color": "#ced4da", "Layer": 1}
   elif(agent.type == "Stand"):
+    return {"Shape": "rect", "w": 1, "h": 1, "Filled": "true", "Color": "green", "Layer": 1}
+  elif(agent.type == "StandFull"):
     return {"Shape": "rect", "w": 1, "h": 1, "Filled": "true", "Color": "red", "Layer": 1}
 
 grid = CanvasGrid(agent_portrayal, 15, 15, 450, 450)
