@@ -54,21 +54,37 @@ class Robot(Agent):
     #si el robot ya lleva una caja significa que tiene que moverse y llevarla al stand
     #inicializadores del AStar
     elif (self.movements < self.model.time and self.cargando == 1):
+      #se obtiene el path a donde se quiere ir
       self.grid.cleanup()
       path = self.getPath()
-      print("PATH DENTRO", path)
-  
-  def getPath(self):
-    standList = self.model.stands
-    print(standList)
+      #se llega al lugar
+      print("index", self.index)
+      print("path", path)
+      if(len(path)>1):
+        next_move = path[1]
+        self.model.grid.move_agent(self, next_move)
+        #self.index += 1
+        #print("path 1", path)
+      else:
+        self.cargando = False
+        self.model.contador += 1
+        
+          
 
+        
+      #   print("path 2", path)
+
+  #funcion que calcula el path
+  def getPath(self):
+    #lista de stands
+    standList = self.model.stands
+    #se inicializan los valores del path
     self.grid.cleanup()
     grid = PathGrid(matrix= self.matrix)
     self.grid = grid
     start = self.grid.node(self.pos[0], self.pos[1])
-    # print("START X: ", self.pos[0])
-    # print("START Y: ", self.pos[1])
     finder = AStarFinder(diagonal_movement = DiagonalMovement.never)
+    #se calcula a qué stand se debe llevar
     end = self.grid.node(((standList[0])[0]), ((standList[0])[0]))
     path, runs = finder.find_path(start, end, self.grid)
     return path
@@ -119,7 +135,7 @@ class CleanBlock(Agent):
 
 class Maze(Model):
   #se asignan las variables modificables por el usuario siendo filas, columnas, robots, tiempo de ejecucion y el numero de cajas por acomodar
-  def __init__(self, rows = 15, columns = 15, robots = 1, time = 100, dirtyBlocks = 6):
+  def __init__(self, rows = 15, columns = 15, robots = 2, time = 300, dirtyBlocks = 20):
     super().__init__()
     self.schedule = RandomActivation(self)
     self.rows = rows
@@ -146,6 +162,7 @@ class Maze(Model):
       # [1,1,1,0,0,0,0,0,0,0,0,0,1,1,1]
 
     ]
+    self.contador = 0
     self.stands = []
     #se crea una matriz de ceros para identificar las casillas sucias y limpias
     self.createCeroMatrix()
