@@ -1,3 +1,4 @@
+from typing import Counter
 import flask
 from flask.json import jsonify
 import uuid
@@ -22,20 +23,20 @@ def queryState(id):
     global model
     model = games[id]
     model.step()
-    listaRobots = []
+    agentList = []
     #buscar todos los agentes del modelo y si son cajas o robots incluirlos en el arreglo de diccionarios a mandar al json
     for i in range(len(model.schedule.agents)):
-        ghost = model.schedule.agents[i]
-        print("tipo: ", type(ghost))
-        print("modelo: ", model.schedule.agents)
-        if type(ghost) is robotCode.Robot:
-            listaRobots.append({"x": ghost.pos[0], "y": ghost.pos[1], "tipo" : "Robot", "ordenadas" : ghost.ordered, "llevaCaja" : ghost.carrying})
-            #, "cajas" : ghost.cajas}
-        elif type(ghost) is robotCode.BoxBlock:
-            listaRobots.append({"x": ghost.pos[0], "y": ghost.pos[1], "tipo" : "BoxBlock", "leaved" : ghost.leaved, "picked" : ghost.picked})
-            print(ghost.leaved)
+        agent = model.schedule.agents[i]
+        # print("tipo: ", type(agent))
+        # print("modelo: ", model.schedule.agents)
+        if type(agent) is robotCode.Robot:
+            temp = {"x": agent.pos[0], "y": agent.pos[1], "tipo" : "Robot", "carrying" : agent.carrying, "counterRobot": agent.counterRobot, "pickedBox" : agent.pickedBox if agent.pickedBox is not None else -1}
+            agentList.append(temp)
+            print(agent.counterRobot)
+        elif type(agent) is robotCode.BoxBlock:
+            agentList.append({"x": agent.pos[0], "y": agent.pos[1], "tipo" : "BoxBlock", "picked" : agent.picked, "id" : agent.id})
         else:
             i = i - 1
-    return jsonify({"Items":listaRobots})
+    return jsonify({"Items":agentList})
 
 app.run()
